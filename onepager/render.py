@@ -142,8 +142,12 @@ def fin_table(d: StockData) -> str:
             txt = e(money(v, cur)) if is_money else e(price(v, cur) if v is not None else "–")
             arrow = ""
             if v is not None and pv:
-                g = v / pv - 1 if pv > 0 else None
-                if g is not None:
+                if pv > 0 and v < 0:
+                    arrow = ' <i class="dn">적자전환</i>'
+                elif pv < 0 and v > 0:
+                    arrow = ' <i class="up">흑자전환</i>'
+                elif pv > 0:
+                    g = v / pv - 1
                     arrow = f' <i class="{"up" if g >= 0 else "dn"}">{"▲" if g >= 0 else "▼"}{abs(g) * 100:.0f}%</i>'
             neg = ' class="neg"' if (v is not None and v < 0) else ""
             return f"<td{neg}>{txt}{arrow}</td>"
