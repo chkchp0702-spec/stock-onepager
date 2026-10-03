@@ -215,12 +215,51 @@ def parse_yf_news(items) -> list[NewsItem]:
 
 _TR_CACHE: dict[str, str] = {}
 
+# 야후 업종명 → 한국어 (자주 나오는 것만; 없으면 자동 번역)
+INDUSTRY_KO = {
+    "Semiconductors": "반도체", "Semiconductor Equipment & Materials": "반도체 장비·소재",
+    "Software - Application": "응용 소프트웨어", "Software - Infrastructure": "인프라 소프트웨어",
+    "Information Technology Services": "IT 서비스", "Consumer Electronics": "가전·전자기기",
+    "Electronic Components": "전자부품", "Communication Equipment": "통신장비", "Computer Hardware": "컴퓨터 하드웨어",
+    "Internet Content & Information": "인터넷 콘텐츠·정보", "Internet Retail": "온라인 유통", "Electronic Gaming & Multimedia": "게임·멀티미디어",
+    "Entertainment": "엔터테인먼트", "Telecom Services": "통신 서비스", "Advertising Agencies": "광고",
+    "Drug Manufacturers - General": "제약 (대형)", "Drug Manufacturers - Specialty & Generic": "제약 (스페셜티·제네릭)",
+    "Biotechnology": "바이오", "Medical Devices": "의료기기", "Medical Instruments & Supplies": "의료 기구·소모품",
+    "Diagnostics & Research": "진단·연구", "Healthcare Plans": "건강보험", "Medical Care Facilities": "의료기관",
+    "Banks - Regional": "지역은행", "Banks - Diversified": "대형은행", "Asset Management": "자산운용",
+    "Capital Markets": "증권·자본시장", "Insurance - Life": "생명보험", "Insurance - Property & Casualty": "손해보험",
+    "Insurance - Diversified": "종합보험", "Credit Services": "신용·결제", "Financial Data & Stock Exchanges": "금융정보·거래소",
+    "Specialty Retail": "전문 소매", "Discount Stores": "할인점", "Department Stores": "백화점", "Grocery Stores": "식료품점",
+    "Restaurants": "외식", "Apparel Retail": "의류 유통", "Apparel Manufacturing": "의류 제조", "Footwear & Accessories": "신발·잡화",
+    "Auto Manufacturers": "자동차", "Auto Parts": "자동차 부품", "Auto & Truck Dealerships": "자동차 판매",
+    "Packaged Foods": "가공식품", "Beverages - Non-Alcoholic": "음료", "Beverages - Brewers": "맥주", "Beverages - Wineries & Distilleries": "주류",
+    "Household & Personal Products": "생활용품", "Tobacco": "담배", "Confectioners": "제과",
+    "Oil & Gas E&P": "석유·가스 탐사생산", "Oil & Gas Integrated": "종합 석유", "Oil & Gas Midstream": "석유·가스 수송",
+    "Oil & Gas Refining & Marketing": "정유", "Oil & Gas Equipment & Services": "유전 장비·서비스", "Uranium": "우라늄", "Solar": "태양광",
+    "Chemicals": "화학", "Specialty Chemicals": "특수화학", "Steel": "철강", "Aluminum": "알루미늄", "Copper": "구리",
+    "Gold": "금광", "Silver": "은광", "Other Industrial Metals & Mining": "산업금속·광업", "Building Materials": "건축자재",
+    "Paper & Paper Products": "제지", "Agricultural Inputs": "농업자재",
+    "Aerospace & Defense": "항공우주·방산", "Specialty Industrial Machinery": "산업기계", "Electrical Equipment & Parts": "전기장비·부품",
+    "Engineering & Construction": "건설·엔지니어링", "Railroads": "철도", "Airlines": "항공사", "Marine Shipping": "해운", "Trucking": "육상운송",
+    "Integrated Freight & Logistics": "물류", "Farm & Heavy Construction Machinery": "농기계·중장비", "Industrial Distribution": "산업재 유통",
+    "Staffing & Employment Services": "인력·채용 서비스", "Consulting Services": "컨설팅", "Security & Protection Services": "보안 서비스",
+    "Waste Management": "폐기물 처리", "Pollution & Treatment Controls": "환경설비", "Conglomerates": "지주·복합기업",
+    "Utilities - Regulated Electric": "전력", "Utilities - Renewable": "신재생 에너지", "Utilities - Regulated Gas": "가스",
+    "REIT - Residential": "주거 리츠", "REIT - Retail": "상업 리츠", "REIT - Office": "오피스 리츠", "REIT - Industrial": "산업 리츠",
+    "Real Estate Services": "부동산 서비스", "Real Estate - Development": "부동산 개발",
+    "Shell Companies": "스팩(SPAC)", "Leisure": "레저", "Lodging": "숙박", "Resorts & Casinos": "리조트·카지노", "Gambling": "게임·도박",
+    "Education & Training Services": "교육", "Scientific & Technical Instruments": "과학·계측기기", "Tools & Accessories": "공구",
+    "Packaging & Containers": "포장", "Furnishings, Fixtures & Appliances": "가구·가전", "Luxury Goods": "명품",
+}
+
 
 def translate_ko(text: str, timeout: float = 8.0) -> str:
     """영어 → 한국어 (구글 번역 비공식 엔드포인트). 실패하면 빈 문자열."""
     text = (text or "").strip()
     if not text:
         return ""
+    if text in INDUSTRY_KO:
+        return INDUSTRY_KO[text]
     if text in _TR_CACHE:
         return _TR_CACHE[text]
     url = "https://translate.googleapis.com/translate_a/single?" + urllib.parse.urlencode(
