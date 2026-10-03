@@ -71,6 +71,8 @@ class StockData:
     employees: Optional[int] = None
     website: str = ""
     business_summary: str = ""          # 원문(대개 영어)
+    business_summary_ko: str = ""       # 한국어 번역 (있으면 우선 사용)
+    industry_ko: str = ""               # 업종 한국어
     financials: list[FinancialYear] = field(default_factory=list)
     price_history: list[tuple[str, float]] = field(default_factory=list)  # (YYYY-MM-DD, close)
     analyst: AnalystView = field(default_factory=AnalystView)
@@ -88,3 +90,5 @@ class Narrative:
     analyst_summary: str
     news_ko: list[str] = field(default_factory=list)   # 뉴스 제목 한국어 요약(없으면 원문)
     source: str = "rule"                 # "llm" 또는 "rule"
+    summary3: list[str] = field(default_factory=list)  # 맨 위 3줄 요약
+    badges: list[tuple[str, str]] = field(default_factory=list)  # (문구, good|warn|neutral)

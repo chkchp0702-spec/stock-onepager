@@ -64,11 +64,13 @@ MARKET_KO = {"US": "미국", "KR": "한국", "JP": "일본", "CN": "중국", "HK
 def rule_based(d: StockData) -> Narrative:
     sector = SECTOR_KO.get(d.sector, d.sector)
     country = COUNTRY_KO.get(d.country, d.country) or MARKET_KO.get(d.ticker.market, "")
-    first = _first_sentence(d.business_summary)
+    industry = d.industry_ko or d.industry
+    desc = d.business_summary_ko or d.business_summary
+    first = _first_sentence(desc)
 
     one = f"{country} {sector} 기업".strip()
-    if d.industry:
-        one += f" · {d.industry}"
+    if industry:
+        one += f" · {industry}"
     if d.market_cap:
         one += f" · 시가총액 {money(d.market_cap, d.currency)}"
 
@@ -76,11 +78,16 @@ def rule_based(d: StockData) -> Narrative:
     if country or d.city:
         overview.append(f"본사: {' '.join(x for x in (country, d.city) if x)}")
     if sector:
-        overview.append(f"업종: {sector}{' / ' + d.industry if d.industry else ''}")
+        overview.append(f"업종: {sector}{' / ' + industry if industry else ''}")
     if d.employees:
         overview.append(f"직원: {d.employees:,}명")
-    if first:
-        overview.append(first)
+    if desc:
+        # 한국어 설명은 세 문장까지, 영어 원문은 첫 문장만
+        if d.business_summary_ko:
+            sents = re.split(r"(?<=[.다요])\s+", desc.strip())
+            overview.append(" ".join(sents[:3])[:420])
+        else:
+            overview.append(first)
 
     return Narrative(
         one_liner=one,
@@ -90,7 +97,109 @@ def rule_based(d: StockData) -> Narrative:
         analyst_summary=analyst_summary(d),
         news_ko=[n.title for n in d.news],
         source="rule",
+        summary3=summary3(d, country, sector, first),
+        badges=badges(d),
     )
+
+
+def _rev_growth(d: StockData):
+    f = d.financials
+    if len(f) >= 2 and f[-1].revenue and f[-2].revenue:
+        return f[-1].revenue / f[-2].revenue - 1
+    return None
+
+
+def _w52_pos(d: StockData):
+    if d.price and d.week52_low and d.week52_high and d.week52_high > d.week52_low:
+        return (d.price - d.week52_low) / (d.week52_high - d.week52_low)
+    return None
+
+
+def summary3(d: StockData, country: str, sector: str, first: str) -> list[str]:
+    """맨 위 3줄: ① 무엇을 하는 회사 ② 돈은 잘 버나 ③ 시장은 어떻게 보나"""
+    out = []
+    what = f"{country} {sector} 기업".strip()
+    if first:
+        what += " — " + (first if len(first) <= 90 else first[:89] + "…")
+    out.append(what)
+
+    f = d.financials
+    if f and f[-1].revenue:
+        g = _rev_growth(d)
+        line = f"{f[-1].period}년 매출 {money(f[-1].revenue, d.currency)}"
+        if g is not None:
+            line += f", 전년보다 {pct(g, sign=True)}"
+        if f[-1].op_margin is not None:
+            line += f" · 영업이익률 {pct(f[-1].op_margin, digits=0)}"
+            line += " (적자)" if f[-1].op_margin < 0 else ""
+        out.append(line)
+    else:
+        out.append("재무 자료가 아직 없습니다 (신규 상장이거나 공시 지연)")
+
+    a = d.analyst
+    buys, sells = a.strong_buy + a.buy, a.sell + a.strong_sell
+    if a.target_mean and d.price:
+        up = a.target_mean / d.price - 1
+        line = f"애널리스트 {a.n_analysts or '다수'}명 평균 '{a.rating or '의견'}' · 목표가는 현재가보다 {pct(up, sign=True)}"
+        out.append(line)
+    else:
+        pos = _w52_pos(d)
+        if pos is not None:
+            where = "고점 근처" if pos >= 0.8 else "저점 근처" if pos <= 0.2 else "중간"
+            out.append(f"애널리스트 의견 없음 · 주가는 52주 범위의 {pos * 100:.0f}% 위치 ({where})")
+        else:
+            out.append("애널리스트 의견 없음")
+    return out
+
+
+def badges(d: StockData) -> list[tuple[str, str]]:
+    """좋음(good)·주의(warn)·중립(neutral) 배지 4개"""
+    b = []
+    g = _rev_growth(d)
+    if g is None:
+        b.append(("매출 자료 없음", "neutral"))
+    elif g >= 0.15:
+        b.append((f"매출 급성장 {pct(g, sign=True)}", "good"))
+    elif g >= 0.03:
+        b.append((f"매출 성장 {pct(g, sign=True)}", "good"))
+    elif g >= -0.03:
+        b.append((f"매출 제자리 {pct(g, sign=True)}", "neutral"))
+    else:
+        b.append((f"매출 감소 {pct(g, sign=True)}", "warn"))
+
+    f = d.financials
+    m = f[-1].op_margin if f else None
+    if m is None:
+        b.append(("이익 자료 없음", "neutral"))
+    elif m >= 0.15:
+        b.append((f"고마진 {pct(m, digits=0)}", "good"))
+    elif m >= 0:
+        b.append((f"흑자 {pct(m, digits=0)}", "neutral"))
+    else:
+        b.append((f"적자 {pct(m, digits=0)}", "warn"))
+
+    a = d.analyst
+    buys, holds, sells = a.strong_buy + a.buy, a.hold, a.sell + a.strong_sell
+    tot = buys + holds + sells
+    if not tot:
+        b.append(("애널리스트 없음", "neutral"))
+    elif sells / tot >= 0.3:
+        b.append(("매도 의견 있음", "warn"))
+    elif buys / tot >= 0.6:
+        b.append((f"매수 우세 {buys}/{tot}", "good"))
+    else:
+        b.append((f"의견 엇갈림 {buys}/{tot}", "neutral"))
+
+    pos = _w52_pos(d)
+    if pos is None:
+        b.append(("52주 자료 없음", "neutral"))
+    elif pos >= 0.8:
+        b.append(("52주 고점 근처", "neutral"))
+    elif pos <= 0.2:
+        b.append(("52주 저점 근처", "warn"))
+    else:
+        b.append((f"52주 범위 {pos * 100:.0f}%", "neutral"))
+    return b
 
 
 def _first_sentence(text: str, max_len: int = 220) -> str:

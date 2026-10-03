@@ -1,6 +1,8 @@
 """시세·재무·애널리스트·뉴스 수집 (야후 파이낸스 + 구글 뉴스 RSS)."""
 from __future__ import annotations
 
+import json
+
 import datetime as dt
 import math
 import urllib.parse
@@ -208,6 +210,29 @@ def parse_yf_news(items) -> list[NewsItem]:
         if not date and it.get("providerPublishTime"):
             date = dt.datetime.fromtimestamp(it["providerPublishTime"]).date().isoformat()
         out.append(NewsItem(title=title, publisher=publisher, link=link, date=date))
+    return out
+
+
+_TR_CACHE: dict[str, str] = {}
+
+
+def translate_ko(text: str, timeout: float = 8.0) -> str:
+    """영어 → 한국어 (구글 번역 비공식 엔드포인트). 실패하면 빈 문자열."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if text in _TR_CACHE:
+        return _TR_CACHE[text]
+    url = "https://translate.googleapis.com/translate_a/single?" + urllib.parse.urlencode(
+        {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": text[:1500]})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        out = "".join(seg[0] for seg in data[0] if seg and seg[0]).strip()
+    except Exception:
+        out = ""
+    _TR_CACHE[text] = out
     return out
 
 

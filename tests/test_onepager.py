@@ -100,7 +100,7 @@ class RenderTest(unittest.TestCase):
     def test_render_sections(self):
         d = sample_data()
         html = render(d, narrative.rule_based(d))
-        for s in ("회사 개요", "이 회사는 이렇게 돈을 번다", "재무 요약", "애널리스트 의견", "최근 뉴스", "주가 (1년)"):
+        for s in ("어떤 회사인가", "이 회사는 이렇게 돈을 번다", "재무 요약", "애널리스트 의견", "최근 뉴스", "주가 (1년)"):
             self.assertIn(s, html)
         self.assertEqual(html.count("<svg"), 2)   # 주가, 매출
         self.assertEqual(html.count('class="step"'), 4)   # 사업 구조 그림
