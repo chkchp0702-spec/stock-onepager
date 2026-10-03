@@ -140,7 +140,8 @@ def summary3(d: StockData, country: str, sector: str, first: str) -> list[str]:
     buys, sells = a.strong_buy + a.buy, a.sell + a.strong_sell
     if a.target_mean and d.price:
         up = a.target_mean / d.price - 1
-        line = f"애널리스트 {a.n_analysts or '다수'}명 평균 '{a.rating or '의견'}' · 목표가는 현재가보다 {pct(up, sign=True)}"
+        who = f"애널리스트 {a.n_analysts}명" if a.n_analysts else "애널리스트"
+        line = (f"{who} 평균 '{a.rating}' · " if a.rating else f"{who} · ") + f"평균 목표가는 현재가보다 {pct(up, sign=True)}"
         out.append(line)
     else:
         pos = _w52_pos(d)
