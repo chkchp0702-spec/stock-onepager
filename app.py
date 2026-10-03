@@ -11,10 +11,16 @@ st.set_page_config(page_title="원 페이지 종목 리포트", page_icon="📄"
 st.markdown("### 📄 원 페이지 종목 리포트")
 st.caption("미국 · 한국 · 일본 · 중국 · 홍콩 주식 — 종목명 또는 코드 (예: 애플, 삼성전자, 7203.T, 텐센트, 600519.SS)")
 
+# 주소에 ?q=종목명 이 있으면 바로 리포트를 만든다 (C. Investing 앱에서 연결)
+url_q = (st.query_params.get("q") or "").strip()[:30]
+
 with st.form("q", clear_on_submit=False):
     col1, col2 = st.columns([5, 1])
-    query = col1.text_input("종목", placeholder="종목명 입력", label_visibility="collapsed")
+    query = col1.text_input("종목", value=url_q, placeholder="종목명 입력", label_visibility="collapsed")
     go = col2.form_submit_button("리포트 만들기", use_container_width=True)
+
+if url_q and not go and query.strip() == url_q:
+    go = True
 
 
 @st.cache_data(ttl=60 * 30, show_spinner=False)
