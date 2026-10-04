@@ -75,6 +75,7 @@ class StockData:
     desc_ko: str = ""                   # 한국어 기업 개요 원문 (네이버·와이즈리포트) — 가장 우선
     estimates: list = field(default_factory=list)   # 애널리스트 추정치 [{"period","rev","rev_lo","rev_hi","rev_g","eps","eps_lo","eps_hi","eps_g","n"}]
     ltg: Optional[float] = None          # 향후 5년 연평균 EPS 성장률 추정
+    calendar: dict = field(default_factory=dict)   # {"earn": ["YYYY-MM-DD"...], "exdiv": "YYYY-MM-DD", "div": "YYYY-MM-DD"}
     industry_ko: str = ""               # 업종 한국어
     financials: list[FinancialYear] = field(default_factory=list)
     price_history: list[tuple[str, float]] = field(default_factory=list)  # (YYYY-MM-DD, close)

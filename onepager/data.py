@@ -196,6 +196,23 @@ def parse_ltg(df) -> Optional[float]:
     return _num(r.iloc[0])
 
 
+def fetch_calendar(t) -> dict:
+    """다가오는 실적 발표일 · 배당락일 · 배당 지급일 (야후 calendar)"""
+    c = _safe(lambda: t.calendar, None) or {}
+    if not isinstance(c, dict):
+        return {}
+    iso = lambda v: v.isoformat()[:10] if hasattr(v, "isoformat") else (str(v)[:10] if v else "")
+    out = {}
+    e = c.get("Earnings Date")
+    if e:
+        out["earn"] = [iso(x) for x in (e if isinstance(e, (list, tuple)) else [e]) if x]
+    if c.get("Ex-Dividend Date"):
+        out["exdiv"] = iso(c["Ex-Dividend Date"])
+    if c.get("Dividend Date"):
+        out["div"] = iso(c["Dividend Date"])
+    return out
+
+
 def fetch_estimates(t, last_fy: Optional[str]):
     est = _safe(lambda: parse_estimates(_safe(lambda: t.revenue_estimate, None), _safe(lambda: t.earnings_estimate, None), last_fy), [])
     ltg = _safe(lambda: parse_ltg(t.growth_estimates), None)

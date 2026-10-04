@@ -251,7 +251,47 @@ def fin_table(d: StockData) -> str:
 
 # ── 페이지 ───────────────────────────────────────────────────────
 
-def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
+def calendar_html(d: StockData) -> str:
+    """다가오는 일정: 실적 발표 · 배당락 · 배당 지급 (오늘 이후만)"""
+    import datetime as _dt
+    today = (d.as_of or _dt.date.today().isoformat())[:10]
+    c = d.calendar or {}
+    items = []
+    earn = [x for x in (c.get("earn") or []) if x >= today]
+    if earn:
+        items.append(("📢", "실적 발표", earn[0] + (" ~ " + earn[-1] if len(earn) > 1 and earn[-1] != earn[0] else "")))
+    if c.get("exdiv") and c["exdiv"] >= today:
+        items.append(("✂️", "배당락일", c["exdiv"] + " (이 날 전에 사야 배당)"))
+    if c.get("div") and c["div"] >= today:
+        items.append(("💵", "배당 지급", c["div"]))
+    if not items:
+        return ""
+    return ('<section class="card cal"><h2>다가오는 일정</h2><div class="calr">' +
+            "".join(f'<div data-date="{e(v[:10])}"><span>{i}</span><b>{e(t)}</b><em>{e(v)}</em></div>' for i, t, v in items) + "</div></section>")
+
+
+def peers_html(d: StockData, peers, fx: Optional[dict]) -> str:
+    """같은 업종 회사 비교표 (시가총액 큰 순, 이 회사 포함)"""
+    if not peers or len(peers) < 2:
+        return ""
+    rows = []
+    for p in peers:
+        me = p["sym"] == d.ticker.symbol
+        g = p.get("g")
+        om = p.get("om")
+        pe_s = f'{p["pe"]:.1f}' if p.get("pe") else "–"
+        rows.append(f'<tr class="{"me" if me else ""}"><td><a data-op="{e(p["sym"])}">{e(p["name"])}</a></td>'
+                    f'<td>{e(money(p.get("cap"), p.get("cur") or d.currency))}</td>'
+                    f'<td>{pe_s}</td>'
+                    f'<td class="{"pos" if (g or 0) >= 0 else "neg"}">{(f"{g * 100:+.0f}%" if g is not None else "–")}</td>'
+                    f'<td class="{"pos" if (om or 0) >= 0 else "neg"}">{(f"{om * 100:.0f}%" if om is not None else "–")}</td></tr>')
+    ind = d.industry_ko or d.industry or "같은 업종"
+    return (f'<section class="card"><h2>같은 업종 비교 <small class="muted">{e(ind)}</small></h2><div class="tblwrap"><table class="fin peer">'
+            '<tr><th>회사</th><th>시가총액</th><th>PER</th><th>매출 성장</th><th>영업이익률</th></tr>' + "".join(rows) +
+            '</table></div><div class="muted small">같은 나라·같은 업종에서 큰 회사 순 · 매출 성장·이익률은 최근 연간 실적 · 회사 이름을 누르면 그 리포트로</div></section>')
+
+
+def render(d: StockData, nv: Narrative, fx: Optional[dict] = None, peers=None) -> str:
     t = d.ticker
     cur = d.currency
     chg = ""
@@ -361,6 +401,9 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
   </div>
 </section>
 
+{calendar_html(d)}
+{peers_html(d, peers, fx)}
+
 <section class="card">
   <h2>애널리스트 추정치 (앞으로)</h2>
   {estimates_html(d, fx)}
@@ -460,6 +503,11 @@ table.fin{width:100%;border-collapse:collapse;font-size:12px}
 .news{margin:0;padding-left:18px}.news li{margin:5px 0}.news a{color:var(--ink);text-decoration:none}.news a:hover{text-decoration:underline}
 .up{color:var(--red)}.down{color:var(--blue)}
 .ft{font-size:10.5px;color:var(--muted);padding:4px 2px 12px}
+/* 일정 · 같은 업종 */
+.calr{display:grid;gap:6px}.calr div{display:flex;align-items:center;gap:8px;background:var(--neu);border-radius:10px;padding:8px 10px;font-size:13px}
+.calr span{font-size:18px}.calr b{flex:0 0 72px}.calr em{font-style:normal;color:var(--ink)}
+.peer td:first-child{max-width:120px;overflow:hidden;text-overflow:ellipsis}.peer a{color:var(--blue);text-decoration:none;cursor:pointer}
+.peer tr.me td{background:#eef4ff;font-weight:700}.peer td.pos{color:var(--ink)}.peer td.neg{color:var(--red)}
 /* ETF */
 .tm{margin:2px 0 4px}.tm g[data-op]{cursor:pointer}
 .tm-n{fill:#fff;font-weight:800;letter-spacing:-.3px}.tm-v{fill:#fff;opacity:.92;font-weight:600}
