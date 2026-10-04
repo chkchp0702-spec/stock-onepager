@@ -280,7 +280,8 @@ def peers_html(d: StockData, peers, fx: Optional[dict]) -> str:
         g = p.get("g")
         om = p.get("om")
         pe_s = f'{p["pe"]:.1f}' if p.get("pe") else "–"
-        rows.append(f'<tr class="{"me" if me else ""}"><td><a data-op="{e(p["sym"])}">{e(p["name"])}</a></td>'
+        code = p["sym"][:6] if re.fullmatch(r"\d{6}\.K[SQ]", p["sym"] or "") else p["sym"]
+        rows.append(f'<tr class="{"me" if me else ""}"><td><a data-op="{e(p["sym"])}">{e(p["name"])}</a><span class="pc">{e(code)}</span></td>'
                     f'<td>{e(money(p.get("cap"), p.get("cur") or d.currency))}</td>'
                     f'<td>{pe_s}</td>'
                     f'<td class="{"pos" if (g or 0) >= 0 else "neg"}">{(f"{g * 100:+.0f}%" if g is not None else "–")}</td>'
@@ -506,7 +507,7 @@ table.fin{width:100%;border-collapse:collapse;font-size:12px}
 /* 일정 · 같은 업종 */
 .calr{display:grid;gap:6px}.calr div{display:flex;align-items:center;gap:8px;background:var(--neu);border-radius:10px;padding:8px 10px;font-size:13px}
 .calr span{font-size:18px}.calr b{flex:0 0 72px}.calr em{font-style:normal;color:var(--ink)}
-.peer td:first-child{max-width:120px;overflow:hidden;text-overflow:ellipsis}.peer a{color:var(--blue);text-decoration:none;cursor:pointer}
+.peer td:first-child{max-width:130px;overflow:hidden;text-overflow:ellipsis}.peer .pc{display:block;font-size:10px;color:var(--muted);font-weight:400}.peer a{color:var(--blue);text-decoration:none;cursor:pointer}
 .peer tr.me td{background:#eef4ff;font-weight:700}.peer td.pos{color:var(--ink)}.peer td.neg{color:var(--red)}
 /* ETF */
 .tm{margin:2px 0 4px}.tm g[data-op]{cursor:pointer}

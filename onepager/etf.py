@@ -145,7 +145,8 @@ def holdings_html(holdings, n_hold: Optional[int]) -> str:
         for i, h in enumerate(holdings[:15]):
             op = f' data-op="{e(h["code"])}"' if h.get("code") else ""
             sh = f'{h["sh"]:,.0f}주' if h.get("sh") else ""
-            items.append(f'<li class="hl"{op}><span class="hl-r">{i + 1}</span><span class="hl-nm"><b>{e(h["name"])}</b></span>'
+            cd = f'<span class="hl-c">{e(h["code"])}</span>' if h.get("code") else ""
+            items.append(f'<li class="hl"{op}><span class="hl-r">{i + 1}</span><span class="hl-nm"><b>{e(h["name"])}</b>{cd}</span>'
                          f'<span class="hl-b"></span><span class="hl-w">{sh}</span><span></span></li>')
         rows = "".join(items)
         return ('<div class="hl-note">운용사가 비중(%) 대신 <b>보유 주식 수</b>만 공개한 ETF예요. 많이 담은 순서는 아래와 같아요.</div>'
@@ -157,8 +158,7 @@ def holdings_html(holdings, n_hold: Optional[int]) -> str:
     for i, h in enumerate(hs):
         col = PALETTE[i % len(PALETTE)] if i < 12 else "#9aa5b5"
         link = f' data-op="{e(h["code"])}"' if h.get("code") else ""
-        sub = (f'<span class="hl-c">{e(h["code"])}</span>' if h.get("code") and h["code"] != h["name"]
-               and not h["code"].isdigit() else "")
+        sub = f'<span class="hl-c">{e(h["code"])}</span>' if h.get("code") and h["code"] != h["name"] else ""
         rows.append(f'<li class="hl"{link}><span class="hl-r">{i + 1}</span>'
                     f'<span class="hl-nm"><b>{e(h["name"])}</b>{sub}</span>'
                     f'<span class="hl-b"><i style="width:{h["w"] / mx * 100:.1f}%;background:{col}"></i></span>'
