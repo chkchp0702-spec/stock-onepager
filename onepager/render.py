@@ -308,7 +308,8 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
     short_desc = " ".join(re.split(r"(?<=[.다요])\s+", desc_txt)[:3])[:360] if desc_txt else ""
     bm_html = bm["svg"] + (f'<p class="bm-desc">{e(short_desc)}</p>' if short_desc else "")
     gen = "Claude 요약" if nv.source == "llm" else "자동 요약"
-    translated = bool(d.business_summary_ko)
+    translated = bool(d.business_summary_ko) or bool(d.desc_ko)
+    auto_tr = bool(d.business_summary_ko) and not d.desc_ko
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -379,7 +380,7 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
   </div>
 </section>
 
-<footer class="ft">출처: Yahoo Finance(시세·재무·애널리스트), Google News(뉴스){' · 회사 설명은 자동 번역' if translated else ''} · {e(gen)} · {e(d.as_of)} 기준.
+<footer class="ft">출처: Yahoo Finance(시세·재무·애널리스트), Google News(뉴스){' · 회사 설명은 자동 번역' if auto_tr else (' · 회사 설명: 와이즈리포트·네이버증권' if d.desc_ko else '')} · {e(gen)} · {e(d.as_of)} 기준.
 정보 제공 목적이며 투자 권유가 아님. 시세는 지연될 수 있으므로 매매 전 증권사에서 확인하세요. 투자 판단과 책임은 투자자 본인에게 있습니다.</footer>
 </main></body></html>"""
 
@@ -459,6 +460,24 @@ table.fin{width:100%;border-collapse:collapse;font-size:12px}
 .news{margin:0;padding-left:18px}.news li{margin:5px 0}.news a{color:var(--ink);text-decoration:none}.news a:hover{text-decoration:underline}
 .up{color:var(--red)}.down{color:var(--blue)}
 .ft{font-size:10.5px;color:var(--muted);padding:4px 2px 12px}
+/* ETF */
+.tm{margin:2px 0 4px}.tm g[data-op]{cursor:pointer}
+.tm-n{fill:#fff;font-weight:800;letter-spacing:-.3px}.tm-v{fill:#fff;opacity:.92;font-weight:600}
+.hl-note{font-size:13px;background:#eef4ff;border-radius:10px;padding:7px 10px;margin-bottom:8px}
+.hls{list-style:none;margin:0;padding:0}
+.hl{display:grid;grid-template-columns:22px minmax(0,1.25fr) minmax(0,1fr) 54px 10px;align-items:center;gap:7px;padding:7px 2px;border-bottom:1px solid var(--line)}
+.hl[data-op]{cursor:pointer}.hl[data-op]:active{background:#f1f5fb}
+.hl-r{width:20px;height:20px;border-radius:50%;background:var(--neu);color:var(--neut);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.hl-nm{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:13.5px}
+.hl-nm b{font-weight:700}.hl-c{color:var(--muted);font-size:11px;margin-left:5px}
+.hl-b{height:9px;background:#eef1f6;border-radius:99px;overflow:hidden}.hl-b i{display:block;height:100%;border-radius:99px}
+.hl-w{text-align:right;font-weight:800;font-size:13px}.hl-go{color:#9aa5b5;font-weight:700}
+.stk{display:flex;height:16px;border-radius:99px;overflow:hidden;margin:4px 0 10px}.stk i{display:block;height:100%}
+.stl{list-style:none;margin:0;padding:0}.stl li{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px}
+.stl .dot{width:10px;height:10px;border-radius:3px;flex:none}.stl .sl{flex:1;min-width:0}.stl b{font-weight:800}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.facts div{background:var(--neu);border-radius:10px;padding:6px 9px;min-width:0}
+.facts span{display:block;font-size:11px;color:var(--muted)}.facts b{font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:640px){.flow2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.flow2 .fs-a{display:none}
 .flow{flex-direction:column}.arrow{flex-basis:22px}
 .arrow::after{left:50%;top:3px;border:8px solid transparent;border-top:12px solid #7a8699;transform:translateX(-50%)}
