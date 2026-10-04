@@ -96,8 +96,15 @@ def _squarify(vals, x, y, w, h):
     return rects
 
 
-def treemap_svg(holdings, total_amt=10000, cur_label="원") -> str:
+ASSET_TM = {"stockPosition": "주식", "bondPosition": "채권", "cashPosition": "현금", "preferredPosition": "우선주",
+            "convertiblePosition": "전환사채", "otherPosition": "기타 (실물·스왑·선물 등)", "EQUITY": "주식", "BOND": "채권",
+            "CASH": "현금", "DERIVATIVES": "파생상품", "OTHERS": "기타"}
+
+
+def treemap_svg(holdings, total_amt=10000, cur_label="원", assets=None) -> str:
     hs = [h for h in holdings if h.get("w")][:12]
+    if not hs and assets:
+        hs = [{"name": ASSET_TM.get(a["k"], a["k"]), "w": a["w"], "code": None} for a in sorted(assets, key=lambda a: -a["w"]) if a.get("w")]
     if not hs:
         return ""
     top = sum(h["w"] for h in hs)
@@ -133,8 +140,18 @@ def treemap_svg(holdings, total_amt=10000, cur_label="원") -> str:
 
 def holdings_html(holdings, n_hold: Optional[int]) -> str:
     hs = [h for h in holdings if h.get("w") is not None][:30]
+    if not hs and holdings:
+        items = []
+        for i, h in enumerate(holdings[:15]):
+            op = f' data-op="{e(h["code"])}"' if h.get("code") else ""
+            sh = f'{h["sh"]:,.0f}주' if h.get("sh") else ""
+            items.append(f'<li class="hl"{op}><span class="hl-r">{i + 1}</span><span class="hl-nm"><b>{e(h["name"])}</b></span>'
+                         f'<span class="hl-b"></span><span class="hl-w">{sh}</span><span></span></li>')
+        rows = "".join(items)
+        return ('<div class="hl-note">운용사가 비중(%) 대신 <b>보유 주식 수</b>만 공개한 ETF예요. 많이 담은 순서는 아래와 같아요.</div>'
+                f'<ul class="hls">{rows}</ul><div class="muted small">주식 수 = 설정 단위(CU)당 보유 주식 수</div>')
     if not hs:
-        return '<div class="muted">구성 종목 정보가 아직 없어요</div>'
+        return '<div class="muted">운용사가 구성 종목을 공개하지 않았어요. 위 그림은 자산 종류별 비중이에요.</div>'
     mx = max(h["w"] for h in hs) or 1
     rows = []
     for i, h in enumerate(hs):
@@ -270,7 +287,13 @@ def render_etf(x: dict, fx: Optional[dict] = None) -> str:
     facts_html = "".join(f"<div><span>{e(k)}</span><b>{e(v)}</b></div>" for k, v in facts if v)
 
     tm_cur = "원"
-    tm = treemap_svg(hs, 10000, tm_cur)
+    tm = treemap_svg(hs, 10000, tm_cur, x.get("assets"))
+    if not any(h.get("w") for h in hs) and tm:
+        tm += '<div class="muted small">구성 종목 비중이 공개되지 않아 자산 종류별로 나눴어요.</div>'
+    if x.get("hold_proxy"):
+        tm += f'<div class="hl-note" style="margin-top:8px">이 ETF는 운용사가 비중을 공개하지 않아서, <b>같은 지수를 따르는 미국 ETF {e(x["hold_proxy"])}</b>의 비중으로 보여줘요. 실제와 조금 다를 수 있어요.</div>'
+    elif x.get("hold_src"):
+        tm += f'<div class="muted small">구성 종목 출처: {e(x["hold_src"])}</div>'
     hist = [tuple(h) for h in (x.get("price_history") or [])]
     sectors = stack_html([(s["k"], s["w"]) for s in (x.get("sectors") or [])], SECTOR_KO, True)
     assets = stack_html([(s["k"], s["w"]) for s in (x.get("assets") or [])], ASSET_KO)
