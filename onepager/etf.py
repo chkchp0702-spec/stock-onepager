@@ -212,10 +212,24 @@ def returns_svg(rets: dict) -> str:
     return "".join(s)
 
 
+def merge_h(hs):
+    """같은 이름(스왑 여러 건 등)은 하나로 합치기"""
+    if not hs or not any(h.get("w") for h in hs):
+        return hs
+    merged = {}
+    for h in hs:
+        k = h["name"]
+        if k in merged:
+            merged[k]["w"] = round((merged[k].get("w") or 0) + (h.get("w") or 0), 2)
+        else:
+            merged[k] = dict(h)
+    return sorted(merged.values(), key=lambda h: -(h.get("w") or 0))
+
+
 def summary3(x: dict) -> list[str]:
     out = []
     what = x.get("index") or x.get("category")
-    hs = x.get("holdings") or []
+    hs = merge_h(x.get("holdings") or [])
     if what:
         out.append(f"‘{what}’을(를) 따라가는 ETF예요." if x.get("index") else f"‘{what}’ 유형의 ETF예요.")
     if hs:
@@ -253,8 +267,8 @@ def render_etf(x: dict, fx: Optional[dict] = None) -> str:
             badges.append(("큰 ETF(순자산 1조원↑)", "good"))
         elif won < 1e10:
             badges.append(("작은 ETF(거래 적을 수 있음)", "warn"))
-    hs = x.get("holdings") or []
-    if hs and hs[0].get("w") and hs[0]["w"] >= 25:
+    hs = merge_h(x.get("holdings") or [])
+    if hs and hs[0].get("w") and hs[0]["w"] >= 25 and "SWAP" not in hs[0]["name"].upper() and len(hs) > 1:
         badges.append((f"{hs[0]['name']} 비중 큼", "neu"))
     badge_html = "".join(f'<span class="bd {k}">{e(t)}</span>' for t, k in badges)
     sum3 = "".join(f'<li><span class="n">{i + 1}</span><span>{e(s)}</span></li>' for i, s in enumerate(summary3(x)))
@@ -290,7 +304,9 @@ def render_etf(x: dict, fx: Optional[dict] = None) -> str:
     tm = treemap_svg(hs, 10000, tm_cur, x.get("assets"))
     if not any(h.get("w") for h in hs) and tm:
         tm += '<div class="muted small">구성 종목 비중이 공개되지 않아 자산 종류별로 나눴어요.</div>'
-    if x.get("hold_proxy"):
+    if x.get("hold_note"):
+        tm += f'<div class="hl-note" style="margin-top:8px">{x["hold_note"]}</div>'
+    elif x.get("hold_proxy"):
         tm += f'<div class="hl-note" style="margin-top:8px">이 ETF는 운용사가 비중을 공개하지 않아서, <b>같은 지수를 따르는 미국 ETF {e(x["hold_proxy"])}</b>의 비중으로 보여줘요. 실제와 조금 다를 수 있어요.</div>'
     elif x.get("hold_src"):
         tm += f'<div class="muted small">구성 종목 출처: {e(x["hold_src"])}</div>'
