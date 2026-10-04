@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from html import escape as _e
+from typing import Optional
 
 from .fmt import money, pct, price, unit
 from .models import Narrative, StockData
@@ -28,15 +29,19 @@ def e(x) -> str:
 FLOW_COLORS = ["#1f4e9c", "#2f6fb5", "#2c8a5a", "#1d6b45"]
 
 
-def flow_html(flow: list[tuple[str, str]], center: str) -> str:
-    """회사가 돈을 버는 구조: 상자 → 화살표 → 상자 (휴대폰에서는 세로)."""
-    parts = [f'<div class="flow" role="img" aria-label="{e(center)} 사업 구조">']
-    for i, (title, desc) in enumerate(flow):
+def flow_html(flow, center: str) -> str:
+    """회사가 돈을 버는 구조: 큰 그림(이모티콘) 4칸 + 화살표. 휴대폰에서는 2×2."""
+    parts = [f'<div class="flow2" role="img" aria-label="{e(center)} 사업 구조">']
+    for i, st in enumerate(flow):
+        if len(st) == 3:
+            icon, title, desc = st
+        else:
+            icon, (title, desc) = "⭐💰"[0 if i < len(flow) - 1 else 1], st
         c = FLOW_COLORS[i % len(FLOW_COLORS)]
-        if i:
-            parts.append('<div class="arrow" aria-hidden="true"></div>')
-        parts.append(f'<div class="step" style="--c:{c}"><span class="no">{i + 1}</span>'
-                     f'<b>{e(title)}</b><small>{e(desc)}</small></div>')
+        parts.append(f'<div class="fs" style="--c:{c}"><div class="fs-i">{e(icon)}</div>'
+                     f'<div class="fs-t"><span class="no">{i + 1}</span>{e(title)}</div><div class="fs-d">{e(desc)}</div></div>')
+        if i < len(flow) - 1:
+            parts.append('<div class="fs-a" aria-hidden="true">➜</div>')
     parts.append("</div>")
     return "".join(parts)
 
@@ -62,6 +67,71 @@ def price_svg(hist: list[tuple[str, float]], currency: str) -> str:
             f'<text x="{W - pad_l}" y="{H - 4}" class="ax" text-anchor="end">{e(hist[-1][0])}</text>'
             f'<text x="{W - pad_l}" y="12" class="ax" text-anchor="end" fill="{c}">1년 {pct(chg, sign=True)}</text></svg>'
             f'<div class="muted small">최고 {price(hi, currency)} · 최저 {price(lo, currency)}</div>')
+
+
+def krw(v, cur: str, fx: Optional[dict], kind: str = "m") -> str:
+    """달러·위안·엔·홍콩달러 옆 원화 환산. 앱이 최신 환율로 다시 채운다 (class krw, data-v, data-c)."""
+    if v is None or cur == "KRW":
+        return ""
+    rate = (fx or {}).get(cur)
+    txt = ""
+    if rate:
+        w = v * rate
+        txt = "≈ " + (price(w, "KRW") if kind == "p" else money(w, "KRW"))
+    return f'<span class="krw" data-v="{v}" data-c="{e(cur)}" data-k="{kind}">{e(txt)}</span>'
+
+
+def estimates_html(d: StockData, fx: Optional[dict]) -> str:
+    est = [x for x in (d.estimates or []) if x.get("rev") is not None or x.get("eps") is not None]
+    if not est:
+        return ('<div class="muted">애널리스트 추정치가 없습니다 (분석하는 증권사가 없거나 자료 미공개)</div>'
+                + (f'<div class="ltg">향후 5년 EPS 연평균 성장 추정 <b>{pct(d.ltg, sign=True)}</b></div>' if d.ltg is not None else ""))
+    cur = d.currency
+    # 실제 매출 (최근 3년) + 추정 (2년) 막대
+    act = [(y.period, y.revenue, None, None) for y in d.financials if y.revenue][-3:]
+    fut = [(x["period"], x.get("rev"), x.get("rev_lo"), x.get("rev_hi")) for x in est if x.get("rev")]
+    bars = ""
+    allb = act + fut
+    if allb:
+        W, H, top, bot = 320, 150, 24, 22
+        mx = max(max(abs(v or 0), abs(hi or 0)) for _, v, _, hi in allb) or 1
+        slot = (W - 20) / len(allb)
+        bw = min(46, slot - 12)
+        out = [f'<svg viewBox="0 0 {W} {H}" class="bars" role="img" aria-label="실제 매출과 추정 매출">']
+        for i, (per, v, lo, hi) in enumerate(allb):
+            x = 10 + i * slot + (slot - bw) / 2
+            h = (H - top - bot) * abs(v) / mx
+            is_est = i >= len(act)
+            if is_est:
+                out.append(f'<rect x="{x:.1f}" y="{H - bot - h:.1f}" width="{bw:.1f}" height="{h:.1f}" rx="4" fill="#e6efff" stroke="#1f4e9c" stroke-width="1.5" stroke-dasharray="4 3"/>')
+                if lo and hi and hi > lo:
+                    y1, y2 = H - bot - (H - top - bot) * hi / mx, H - bot - (H - top - bot) * lo / mx
+                    cx = x + bw / 2
+                    out.append(f'<line x1="{cx:.1f}" x2="{cx:.1f}" y1="{y1:.1f}" y2="{y2:.1f}" stroke="#1f4e9c" stroke-width="1.5"/>'
+                               f'<line x1="{cx - 6:.1f}" x2="{cx + 6:.1f}" y1="{y1:.1f}" y2="{y1:.1f}" stroke="#1f4e9c" stroke-width="1.5"/>'
+                               f'<line x1="{cx - 6:.1f}" x2="{cx + 6:.1f}" y1="{y2:.1f}" y2="{y2:.1f}" stroke="#1f4e9c" stroke-width="1.5"/>')
+            else:
+                out.append(f'<rect x="{x:.1f}" y="{H - bot - h:.1f}" width="{bw:.1f}" height="{h:.1f}" rx="4" fill="#9fb6d6"/>')
+            ytxt = min(H - bot - h, (H - bot - (H - top - bot) * hi / mx) if (is_est and hi) else 1e9) - 5
+            out.append(f'<text x="{x + bw / 2:.1f}" y="{ytxt:.1f}" text-anchor="middle" class="ax b">{e(money(v, cur).replace(" " + unit(cur), ""))}</text>')
+            out.append(f'<text x="{x + bw / 2:.1f}" y="{H - 6}" text-anchor="middle" class="ax{" b" if is_est else ""}">{e(per)}{"(E)" if is_est else ""}</text>')
+        out.append("</svg>")
+        bars = "".join(out) + '<div class="muted small">진한 막대 = 실제 매출 · 점선 막대 = 애널리스트 평균 추정 · 세로줄 = 최저~최고 추정</div>'
+    rows = []
+    for x in est:
+        rev = x.get("rev")
+        rv = (f'{e(money(rev, cur))}' + (f' <i class="{"up" if (x.get("rev_g") or 0) >= 0 else "dn"}">{pct(x["rev_g"], sign=True, digits=0)}</i>' if x.get("rev_g") is not None else "")
+              + (f'<br>{krw(rev, cur, fx)}' if cur != "KRW" else "")) if rev is not None else "–"
+        eps = x.get("eps")
+        ev = (f'{e(price(eps, cur))}' + (f' <i class="{"up" if (x.get("eps_g") or 0) >= 0 else "dn"}">{pct(x["eps_g"], sign=True, digits=0)}</i>' if x.get("eps_g") is not None else "")) if eps is not None else "–"
+        pe = ""
+        if eps and eps > 0 and d.price:
+            pe = f"{d.price / eps:.1f}배"
+        rows.append(f'<tr><td>{e(x["period"])}(E)' + (f'<br><small class="muted">{x["n"]}명</small>' if x.get("n") else "") + f'</td><td>{rv}</td><td>{ev}</td><td>{e(pe) or "–"}</td></tr>')
+    table = ('<div class="tblwrap"><table class="fin est"><thead><tr><th>연도</th><th>매출</th><th>주당순이익</th><th>예상 PER</th></tr></thead>'
+             f'<tbody>{"".join(rows)}</tbody></table></div>')
+    ltg = f'<div class="ltg">향후 5년 EPS 연평균 성장 추정 <b>{pct(d.ltg, sign=True)}</b></div>' if d.ltg is not None else ""
+    return bars + table + ltg + '<div class="muted small">(E) = 애널리스트 평균 추정 · N명 = 추정한 애널리스트 수 · % = 전년 대비 · 예상 PER = 현재가 ÷ 추정 EPS</div>'
 
 
 def w52_html(d: StockData) -> str:
@@ -165,7 +235,7 @@ def fin_table(d: StockData) -> str:
 
 # ── 페이지 ───────────────────────────────────────────────────────
 
-def render(d: StockData, nv: Narrative) -> str:
+def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
     t = d.ticker
     cur = d.currency
     chg = ""
@@ -179,15 +249,19 @@ def render(d: StockData, nv: Narrative) -> str:
         upside = f'<span class="{"up" if u >= 0 else "down"}">현재가 대비 {pct(u, sign=True)}</span>'
 
     kpis = [
-        ("주가", price(d.price, cur), chg or "전일 대비", "k1"),
-        ("시가총액", money(d.market_cap, cur), f"PER {d.pe:.1f}배" if d.pe else "PER –", "k2"),
-        ("PBR", f"{d.pb:.1f}배" if d.pb else "–", f"배당 {pct(d.dividend_yield)}" if d.dividend_yield else "배당 없음·미확인", "k3"),
+        ("주가", price(d.price, cur), chg or "전일 대비", "k1", krw(d.price, cur, fx, "p")),
+        ("시가총액", money(d.market_cap, cur), f"PER {d.pe:.1f}배" if d.pe else "PER –", "k2", krw(d.market_cap, cur, fx)),
+        ("PBR", f"{d.pb:.1f}배" if d.pb else "–", f"배당 {pct(d.dividend_yield)}" if d.dividend_yield else "배당 없음·미확인", "k3", ""),
         ("평균 목표주가", price(d.analyst.target_mean, cur) if d.analyst.target_mean else "–",
-         upside or (d.analyst.rating or "의견 없음"), "k4"),
+         upside or (d.analyst.rating or "의견 없음"), "k4", krw(d.analyst.target_mean, cur, fx, "p") if d.analyst.target_mean else ""),
     ]
     kpi_html = "".join(
-        f'<div class="kpi {c}"><div class="kl">{e(l)}</div><div class="kv">{e(v)}</div><div class="ks">{s}</div></div>'
-        for l, v, s, c in kpis)
+        f'<div class="kpi {c}"><div class="kl">{e(l)}</div><div class="kv">{e(v)}</div>'
+        + (f'<div class="kw">{w}</div>' if w else "") + f'<div class="ks">{s}</div></div>'
+        for l, v, s, c, w in kpis)
+    last_rev = next((y for y in reversed(d.financials) if y.revenue), None)
+    rev_krw = (f'<div class="muted small">최근 연 매출 {e(money(last_rev.revenue, cur))} {krw(last_rev.revenue, cur, fx)}</div>'
+               if (last_rev and cur != "KRW") else "")
 
     badge_html = "".join(f'<span class="bd {k}">{e(txt)}</span>' for txt, k in nv.badges)
     sum3 = "".join(f'<li><span class="n">{i + 1}</span><span>{e(x)}</span></li>' for i, x in enumerate(nv.summary3))
@@ -221,7 +295,7 @@ def render(d: StockData, nv: Narrative) -> str:
 <header class="hd">
   <div class="hd-l"><div class="tk">{e(exch)}</div><h1>{e(t.name)}</h1>
   <div class="one">{e(nv.one_liner)}</div></div>
-  <div class="hdr">{e(d.as_of)}<br>통화 {e(unit(cur))}</div>
+  <div class="hdr">{e(d.as_of)}<br>통화 {e(unit(cur))}{('<br><span class="fxl">' + e(f"1{unit(cur)} ≈ {fx[cur]:,.2f}원") + '</span>') if (fx and cur != "KRW" and fx.get(cur)) else ""}</div>
 </header>
 
 <section class="card sum">
@@ -253,12 +327,18 @@ def render(d: StockData, nv: Narrative) -> str:
   <div class="card">
     <h2>매출 추이</h2>
     {revenue_svg(d) or '<div class="muted">데이터 없음</div>'}
+    {rev_krw}
     {fin_comments}
   </div>
   <div class="card">
     <h2>재무 숫자</h2>
     {fin_table(d)}
   </div>
+</section>
+
+<section class="card">
+  <h2>애널리스트 추정치 (앞으로)</h2>
+  {estimates_html(d, fx)}
 </section>
 
 <section class="grid2">
@@ -319,6 +399,17 @@ h2 small{font-weight:400;font-size:12px}
 .cm{margin:10px 0 0;padding:0;list-style:none}.cm li{display:flex;gap:7px;font-size:13px;margin:4px 0;color:#2a3442}.cm li span{flex:none;width:16px}
 .muted{color:var(--muted)}.small{font-size:11.5px}.sub{font-weight:600;margin-top:8px;font-size:13px}
 svg{width:100%;height:auto;display:block}
+.flow2{display:flex;align-items:stretch;gap:4px}
+.fs{flex:1;min-width:0;border-radius:14px;padding:12px 6px 10px;text-align:center;background:color-mix(in srgb,var(--c) 7%,#fff);border:1.5px solid color-mix(in srgb,var(--c) 45%,#fff)}
+.fs-i{font-size:34px;line-height:1.1;margin-bottom:6px}
+.fs-t{font-weight:800;color:var(--c);font-size:14px;display:flex;align-items:center;justify-content:center;gap:5px}
+.fs-t .no{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;font-size:10.5px;align-items:center;justify-content:center;flex:none}
+.fs-d{font-size:12px;color:#4a5566;margin-top:3px;line-height:1.4}
+.fs-a{flex:0 0 14px;display:flex;align-items:center;justify-content:center;color:#7a8699;font-size:15px}
+.kw{font-size:11.5px;opacity:.9;margin-top:1px}.krw{white-space:nowrap}
+.fxl{color:#f4c542}
+.est td{vertical-align:top}.est td:nth-child(2),.est td:nth-child(3){text-align:right}.est .krw{font-size:10.5px;color:var(--muted)}
+.ltg{margin-top:8px;font-size:13px;background:#eef4ff;border-radius:10px;padding:8px 10px}
 .flow{display:flex;align-items:stretch;gap:0}
 .step{flex:1;position:relative;border:1px solid var(--c);background:color-mix(in srgb,var(--c) 8%,#fff);border-radius:12px;
 padding:16px 8px 12px;text-align:center;display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -344,7 +435,8 @@ table.fin{width:100%;border-collapse:collapse;font-size:12px}
 .news{margin:0;padding-left:18px}.news li{margin:5px 0}.news a{color:var(--ink);text-decoration:none}.news a:hover{text-decoration:underline}
 .up{color:var(--red)}.down{color:var(--blue)}
 .ft{font-size:10.5px;color:var(--muted);padding:4px 2px 12px}
-@media (max-width:640px){.flow{flex-direction:column}.arrow{flex-basis:22px}
+@media (max-width:640px){.flow2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.flow2 .fs-a{display:none}
+.flow{flex-direction:column}.arrow{flex-basis:22px}
 .arrow::after{left:50%;top:3px;border:8px solid transparent;border-top:12px solid #7a8699;transform:translateX(-50%)}
 .step{flex-direction:row;justify-content:center;align-items:baseline;gap:10px;padding:12px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}.hd{flex-direction:column}.hdr{text-align:left}}
 @media print{body{background:#fff}.page{padding:0}.card{break-inside:avoid}@page{size:A4;margin:10mm}}

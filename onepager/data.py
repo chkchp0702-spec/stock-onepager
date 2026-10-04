@@ -62,6 +62,7 @@ def fetch(ticker: Ticker, news_limit: int = 6) -> StockData:
         d.price = d.price_history[-1][1]
     _safe(lambda: parse_recommendations(t.recommendations, d.analyst), None)
     _safe(lambda: parse_upgrades(t.upgrades_downgrades, d.analyst), None)
+    d.estimates, d.ltg = fetch_estimates(t, d.financials[-1].period if d.financials else None)
 
     news = _safe(lambda: google_news(_news_query(ticker, info), limit=news_limit), [])
     if len(news) < news_limit:
@@ -157,6 +158,48 @@ def parse_history(df) -> list[tuple[str, float]]:
         if v is not None:
             out.append((idx.strftime("%Y-%m-%d"), v))
     return out
+
+
+def parse_estimates(rev_df, eps_df, last_fy: Optional[str]) -> list[dict]:
+    """야후 revenue_estimate / earnings_estimate → 올해·내년 회계연도 추정치.
+    0y = 진행 중인 회계연도, +1y = 그다음 해. 연도 이름은 마지막 실적 연도 + 1, + 2."""
+    out = []
+    try:
+        base = int(str(last_fy)[:4]) if last_fy else dt.date.today().year - 1
+    except ValueError:
+        base = dt.date.today().year - 1
+    for k, add in (("0y", 1), ("+1y", 2)):
+        row = {"period": str(base + add)}
+        for df, pre in ((rev_df, "rev"), (eps_df, "eps")):
+            if df is None or getattr(df, "empty", True) or k not in df.index:
+                continue
+            r = df.loc[k]
+            row[pre] = _num(r.get("avg"))
+            row[pre + "_lo"] = _num(r.get("low"))
+            row[pre + "_hi"] = _num(r.get("high"))
+            row[pre + "_g"] = _num(r.get("growth"))
+            n = _num(r.get("numberOfAnalysts"))
+            if n:
+                row["n"] = max(int(n), row.get("n", 0))
+        if row.get("rev") is not None or row.get("eps") is not None:
+            out.append(row)
+    return out
+
+
+def parse_ltg(df) -> Optional[float]:
+    if df is None or getattr(df, "empty", True) or "+5y" not in df.index:
+        return None
+    r = df.loc["+5y"]
+    for c in ("stockTrend", "stock"):
+        if c in r.index:
+            return _num(r[c])
+    return _num(r.iloc[0])
+
+
+def fetch_estimates(t, last_fy: Optional[str]):
+    est = _safe(lambda: parse_estimates(_safe(lambda: t.revenue_estimate, None), _safe(lambda: t.earnings_estimate, None), last_fy), [])
+    ltg = _safe(lambda: parse_ltg(t.growth_estimates), None)
+    return est, ltg
 
 
 def parse_recommendations(df, a: AnalystView) -> None:
