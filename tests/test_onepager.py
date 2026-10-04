@@ -102,8 +102,8 @@ class RenderTest(unittest.TestCase):
         html = render(d, narrative.rule_based(d))
         for s in ("어떤 회사인가", "이 회사는 이렇게 돈을 번다", "재무 숫자", "한눈에 보기", "애널리스트 의견", "최근 뉴스", "주가 (1년)"):
             self.assertIn(s, html)
-        self.assertEqual(html.count("<svg"), 3)   # 사업 그림, 주가, 매출
-        self.assertIn('class="bm"', html)   # 사업 구조 그림
+        self.assertEqual(html.count("<svg"), 2)   # 주가, 매출 (사업 그림은 사진 카드)
+        self.assertIn('class="bv"', html)   # 사업 구조 그림
 
     def test_escapes_html(self):
         d = sample_data()

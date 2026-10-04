@@ -103,6 +103,8 @@ def products(text: str, limit: int = 5) -> list[tuple[str, str]]:
     objs = re.findall(r"([^.。:;]{2,160}?)(?:을|를)\s*(?:주로\s*)?(?:[가-힣]+,\s*)*(?:[가-힣]+\s*및\s*)?" + VERBS, text)
     objs += re.findall(r"([^.。:;]{2,80}?)\s*(?:전문 ?기업|전문 ?업체|제조 ?기업|제조업체|기술 ?회사로|전문 ?회사)", text)
     objs += re.findall(r"(?:카테고리|제품|서비스|사업)(?:은|는)\s*([^.。]{2,120}?)(?:을|를)?\s*포함", text)
+    objs += re.findall(r"(?:부문|제품군|사업 ?분야|주요 ?제품)(?:에는|은|는|으로는)\s*([^.。]{2,220}?)\s*(?:등이 있|등을 포함|를 포함|을 포함|이 있|가 있)", text)
+    objs += re.findall(r"([^.。]{2,80}?)\s*(?:을|를)\s*영위", text)
     items, seen = [], set()
     chunks = []
     for o in objs:
@@ -114,6 +116,11 @@ def products(text: str, limit: int = 5) -> list[tuple[str, str]]:
         for part in re.split(r",|·|/| 및 | 와 | 과 |와 |과 |\s등의?\s| 그리고 ", o):
             p = _clean(part)
             p = re.sub(r"^(글로벌|종합|대형|선도적인|선도|대표적인|세계적인)\s+", "", p)
+            q = re.sub(r"^.*?(?:에서|에게|으로|에)\s+", "", p)            # '지역에서 차량' → '차량'
+            p = q if len(q) >= 2 else p
+            p = re.sub(r"\s*(?:구매|판매|제공|생산|공급|개발|제조|운영)$", "", p).strip()
+            if re.search(r"시장|국내|해외|지역|국가|개 ?국|있으며|당사|중요한|^약 |\d+ ?개|사업$|관련$|^(서비스|사업|제품|기술|솔루션|부품|장비|소재)$", p):
+                continue
             if not p or len(p) < 2 or len(p) > 16 or STOP.match(p) or NOT_PRODUCT.match(p):
                 continue
             if re.search(r"\d{4}년|설립|상장|보유|종속|있음|하였|되었|합니다|있습니다|기업$|회사$|업체$|^[은는이가을를으로의에]", p):
@@ -245,16 +252,95 @@ def svg(name: str, sector: str, prods, custs, regs, money: str) -> str:
     return "".join(s)
 
 
-def build(d, text: str, money: str) -> dict:
+def _domain(url: str) -> str:
+    m = re.match(r"https?://(?:www\.)?([^/]+)", url or "")
+    return m.group(1) if m else ""
+
+
+def logo_urls(d, rc: str = "") -> list[str]:
+    """회사 로고 후보: 네이버 증권 로고 → 홈페이지 아이콘(구글)"""
+    sym = d.ticker.symbol
+    out = []
+    if d.ticker.market == "KR":
+        out.append(f"https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock{sym.split('.')[0]}.png")
+    elif rc:
+        out.append(f"https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock{rc}.png")
+    dom = _domain(d.website)
+    if dom:
+        out.append(f"https://www.google.com/s2/favicons?domain={dom}&sz=128")
+    return out
+
+
+def visual(d, prods, custs, regs, money: str, media: dict | None = None, rc: str = "") -> str:
+    """사진·로고가 들어간 '이 회사는 이렇게 돈을 번다' 카드"""
+    from html import escape as E
+    media = media or {}
+    pimg = media.get("pimg") or {}
+    logos = logo_urls(d, rc)
+    logo_html = ""
+    if logos:
+        alt = "".join(f"this.onerror=null;this.src='{u}';" for u in logos[1:2]) or "this.style.display='none';"
+        nxt = "this.style.display='none';" if len(logos) < 2 else f"if(this.dataset.f){{this.style.display='none'}}else{{this.dataset.f=1;this.src='{logos[1]}'}}"
+        logo_html = f'<img class="bv-logo" src="{E(logos[0])}" alt="" onerror="{nxt}">'
+    sect = SECTOR_DEFAULT.get(d.sector, ("🏢",))[0] if d.sector else "🏢"
+    ind = d.industry_ko or d.industry or ""
+    h = [f'<div class="bv"><div class="bv-top">{logo_html}<span class="bv-si">{sect}</span><div><b>{E(d.ticker.name)}</b>'
+         f'<small>{E(ind)}{" · " if ind else ""}{E(d.ticker.symbol)}</small></div></div>']
+    if media.get("photo"):
+        h.append(f'<div class="bv-hero"><img src="{E(media["photo"])}" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">'
+                 f'<span>사진: Wikimedia Commons</span></div>')
+    if prods:
+        h.append('<div class="bv-h">🏭 이 회사가 만드는 것 · 파는 것</div><div class="bv-ps">')
+        for ic, nm in prods[:6]:
+            img = pimg.get(nm)
+            pic = (f'<img src="{E(img)}" alt="" loading="lazy" onerror="this.remove()">' if img else "")
+            h.append(f'<div class="bv-p"><div class="bv-pi"><em>{ic}</em>{pic}</div><b>{E(_short(nm, 11))}</b></div>')
+        h.append("</div>")
+    # 돈의 흐름: 회사 → 고객 → 매출
+    cust_ic = "".join(ic for ic, _ in custs[:3]) or "👥"
+    cust_nm = " · ".join(nm for _, nm in custs[:3]) or "고객"
+    h.append('<div class="bv-h">💸 돈이 도는 길</div><div class="bv-flow">'
+             f'<div class="bv-s"><i>{sect}</i><b>만들어서</b><small>{E(_short(d.ticker.name, 10))}</small></div><span class="bv-a">➜</span>'
+             f'<div class="bv-s"><i>{cust_ic}</i><b>팔면</b><small>{E(cust_nm)}</small></div><span class="bv-a">➜</span>'
+             f'<div class="bv-s money"><i>💰</i><b>돈이 들어와요</b><small>{E(money)}</small></div></div>')
+    if regs:
+        h.append('<div class="bv-rg">' + "".join(f'<span>{fl} {E(nm)}</span>' for fl, nm in regs) + "</div>")
+    h.append("</div>")
+    return "".join(h)
+
+
+def build(d, text: str, money: str, media: dict | None = None, rc: str = "") -> dict:
     """그림과 '사업 한눈에' 목록을 함께 돌려준다."""
     prods = products(text)
     custs = customers(text, d.sector, prods)
     regs = regions(text, d.ticker.market)
-    return {"svg": svg(d.ticker.name, d.sector, prods, custs, regs, money),
+    return {"svg": visual(d, prods, custs, regs, money, media, rc),
             "products": prods, "customers": custs, "regions": regs}
 
 
 CSS = """
+.bv{display:grid;gap:10px}
+.bv-top{display:flex;align-items:center;gap:10px}
+.bv-logo{width:44px;height:44px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid #e2e7ef;padding:4px}
+.bv-si{display:none}.bv-logo[style*="none"]+.bv-si{display:flex;width:44px;height:44px;border-radius:12px;background:#eef4ff;font-size:24px;align-items:center;justify-content:center}
+.bv-top b{font-size:16px;display:block}.bv-top small{font-size:11.5px;color:#6b7686}
+.bv-hero{position:relative;border-radius:14px;overflow:hidden;background:#eef1f6;max-height:190px}
+.bv-hero img{width:100%;height:190px;object-fit:cover;display:block}
+.bv-hero span{position:absolute;right:8px;bottom:6px;font-size:9.5px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px}
+.bv-h{font-size:12.5px;font-weight:800;color:#4a5566;margin-top:2px}
+.bv-ps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.bv-p{text-align:center;min-width:0}
+.bv-pi{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#eef4ff,#f8eef8);display:flex;align-items:center;justify-content:center;border:1px solid #e2e7ef}
+.bv-pi em{font-style:normal;font-size:34px}
+.bv-pi img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.bv-p b{display:block;font-size:12px;margin-top:5px;line-height:1.3;word-break:keep-all}
+.bv-flow{display:flex;align-items:stretch;gap:4px}
+.bv-s{flex:1;min-width:0;border-radius:14px;padding:10px 4px;text-align:center;background:#f4f6fa;border:1px solid #e2e7ef}
+.bv-s i{font-style:normal;font-size:26px;display:block;line-height:1.2}.bv-s b{display:block;font-size:12.5px;margin-top:3px}
+.bv-s small{display:block;font-size:11px;color:#6b7686;margin-top:2px;line-height:1.35;word-break:keep-all}
+.bv-s.money{background:#e6f4ec;border-color:#bfe3cd}.bv-s.money b{color:#1d6b45}
+.bv-a{flex:0 0 14px;display:flex;align-items:center;justify-content:center;color:#9aa5b5;font-size:13px}
+.bv-rg{display:flex;flex-wrap:wrap;gap:6px}.bv-rg span{font-size:12px;background:#f4f6fa;border-radius:999px;padding:4px 10px}
 .bm{width:100%;height:auto;display:block;margin:4px 0 2px}
 .bm-h{font-size:11px;fill:#6b7686;font-weight:700}
 .bm-i{font-size:20px;dominant-baseline:middle}

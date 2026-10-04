@@ -292,7 +292,7 @@ def peers_html(d: StockData, peers, fx: Optional[dict]) -> str:
             '</table></div><div class="muted small">같은 나라·같은 업종에서 큰 회사 순 · 매출 성장·이익률은 최근 연간 실적 · 회사 이름을 누르면 그 리포트로</div></section>')
 
 
-def render(d: StockData, nv: Narrative, fx: Optional[dict] = None, peers=None) -> str:
+def render(d: StockData, nv: Narrative, fx: Optional[dict] = None, peers=None, media: Optional[dict] = None, rc: str = "") -> str:
     t = d.ticker
     cur = d.currency
     chg = ""
@@ -344,7 +344,7 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None, peers=None) -
     money_txt = f"매출 {money(last_rev.revenue, cur)}" if last_rev else "매출 정보 없음"
     if last_rev and cur != "KRW" and fx and fx.get(cur):
         money_txt += f" (≈{money(last_rev.revenue * fx[cur], 'KRW')})"
-    bm = bizmap.build(d, desc_txt, money_txt)
+    bm = bizmap.build(d, desc_txt, money_txt, media, rc)
     chips = "".join(f'<div><b>{e(ic)}</b>{e(nm)}</div>' for ic, nm in bm["products"][:6])
     short_desc = " ".join(re.split(r"(?<=[.다요])\s+", desc_txt)[:3])[:360] if desc_txt else ""
     bm_html = bm["svg"] + (f'<p class="bm-desc">{e(short_desc)}</p>' if short_desc else "")
