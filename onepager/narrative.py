@@ -135,7 +135,7 @@ def rule_based(d: StockData) -> Narrative:
     sector = SECTOR_KO.get(d.sector, d.sector)
     country = COUNTRY_KO.get(d.country, d.country) or MARKET_KO.get(d.ticker.market, "")
     industry = d.industry_ko or d.industry
-    desc = d.business_summary_ko or d.business_summary
+    desc = clean_desc(d.desc_ko) or d.business_summary_ko or d.business_summary
     first = _first_sentence(desc)
 
     one = f"{country} {sector} 기업".strip()
@@ -153,7 +153,7 @@ def rule_based(d: StockData) -> Narrative:
         overview.append(f"직원: {d.employees:,}명")
     if desc:
         # 한국어 설명은 세 문장까지, 영어 원문은 첫 문장만
-        if d.business_summary_ko:
+        if d.desc_ko or d.business_summary_ko:
             sents = re.split(r"(?<=[.다요])\s+", desc.strip())
             overview.append(" ".join(sents[:3])[:420])
         else:
@@ -170,6 +170,19 @@ def rule_based(d: StockData) -> Narrative:
         summary3=summary3(d, country, sector, first),
         badges=badges(d),
     )
+
+
+def clean_desc(t: str) -> str:
+    """네이버·와이즈리포트 개요 정리: <br>·기준일 꼬리표 제거, '동사는' → 회사."""
+    if not t:
+        return ""
+    t = re.sub(r"<br\s*/?>", " ", t)
+    t = re.sub(r"기업개요\s*\[기준:[^\]]*\]\s*", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"^동사는\s*", "", t)
+    t = re.sub(r"(있음|하였음|되었음|하고 있음|임)\.", lambda m: {"있음": "있습니다", "하였음": "했습니다", "되었음": "되었습니다", "하고 있음": "하고 있습니다", "임": "입니다"}[m.group(1)] + ".", t)
+    t = re.sub(r"(있음|하였음|임)$", lambda m: {"있음": "있습니다", "하였음": "했습니다", "임": "입니다"}[m.group(1)] + ".", t)
+    return t
 
 
 def _rev_growth(d: StockData):

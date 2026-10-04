@@ -72,6 +72,7 @@ class StockData:
     website: str = ""
     business_summary: str = ""          # 원문(대개 영어)
     business_summary_ko: str = ""       # 한국어 번역 (있으면 우선 사용)
+    desc_ko: str = ""                   # 한국어 기업 개요 원문 (네이버·와이즈리포트) — 가장 우선
     estimates: list = field(default_factory=list)   # 애널리스트 추정치 [{"period","rev","rev_lo","rev_hi","rev_g","eps","eps_lo","eps_hi","eps_g","n"}]
     ltg: Optional[float] = None          # 향후 5년 연평균 EPS 성장률 추정
     industry_ko: str = ""               # 업종 한국어

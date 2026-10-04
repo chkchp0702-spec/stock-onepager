@@ -11,9 +11,12 @@ from __future__ import annotations
 
 from html import escape as _e
 from typing import Optional
+import re
 
 from .fmt import money, pct, price, unit
 from .models import Narrative, StockData
+from . import bizmap
+from .narrative import clean_desc
 
 MARKET_LABEL = {"US": "미국", "KR": "한국", "JP": "일본", "CN": "중국", "HK": "홍콩"}
 MARKET_FLAG = {"US": "🇺🇸", "KR": "🇰🇷", "JP": "🇯🇵", "CN": "🇨🇳", "HK": "🇭🇰"}
@@ -296,6 +299,14 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
         fin_comments = '<ul class="cm">' + "".join(f"<li><span>{icon(x)}</span>{e(x)}</li>" for x in nv.financial_comment) + "</ul>"
 
     exch = f"{MARKET_FLAG.get(t.market, '')} {MARKET_LABEL.get(t.market, t.market)} · {t.symbol}"
+    desc_txt = clean_desc(d.desc_ko) or d.business_summary_ko or ""
+    money_txt = f"매출 {money(last_rev.revenue, cur)}" if last_rev else "매출 정보 없음"
+    if last_rev and cur != "KRW" and fx and fx.get(cur):
+        money_txt += f" (≈{money(last_rev.revenue * fx[cur], 'KRW')})"
+    bm = bizmap.build(d, desc_txt, money_txt)
+    chips = "".join(f'<div><b>{e(ic)}</b>{e(nm)}</div>' for ic, nm in bm["products"][:6])
+    short_desc = " ".join(re.split(r"(?<=[.다요])\s+", desc_txt)[:3])[:360] if desc_txt else ""
+    bm_html = bm["svg"] + (f'<p class="bm-desc">{e(short_desc)}</p>' if short_desc else "")
     gen = "Claude 요약" if nv.source == "llm" else "자동 요약"
     translated = bool(d.business_summary_ko)
 
@@ -333,7 +344,7 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
 
 <section class="card">
   <h2>이 회사는 이렇게 돈을 번다</h2>
-  {flow_html(nv.flow, t.name)}
+  {bm_html}
 </section>
 
 <section class="grid2">
@@ -373,7 +384,7 @@ def render(d: StockData, nv: Narrative, fx: Optional[dict] = None) -> str:
 </main></body></html>"""
 
 
-CSS = """
+CSS = bizmap.CSS + """
 :root{--navy:#14284b;--ink:#1c2533;--muted:#6b7686;--line:#e2e7ef;--bg:#f4f6fa;--card:#fff;
 --green:#1d6b45;--red:#c0392b;--blue:#1f4e9c;--good:#e6f4ec;--goodt:#1d6b45;--warn:#fdecea;--warnt:#b0352a;--neu:#eef1f6;--neut:#4a5566}
 *{box-sizing:border-box}
