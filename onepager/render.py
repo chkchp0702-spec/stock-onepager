@@ -82,7 +82,20 @@ def krw(v, cur: str, fx: Optional[dict], kind: str = "m") -> str:
 
 
 def estimates_html(d: StockData, fx: Optional[dict]) -> str:
-    est = [x for x in (d.estimates or []) if x.get("rev") is not None or x.get("eps") is not None]
+    est = [dict(x) for x in (d.estimates or []) if x.get("rev") is not None or x.get("eps") is not None]
+    # 성장률은 야후 값 대신 직접 계산 (바로 앞 해 실제값 또는 앞선 추정치 대비)
+    act_by = {str(y.period): y for y in d.financials}
+    prev_rev = prev_eps = None
+    for x in est:
+        try:
+            py = act_by.get(str(int(x["period"]) - 1))
+        except ValueError:
+            py = None
+        pr = py.revenue if py else prev_rev
+        pe_ = py.eps if py else prev_eps
+        x["rev_g"] = (x["rev"] / pr - 1) if (x.get("rev") and pr and pr > 0) else None
+        x["eps_g"] = (x["eps"] / pe_ - 1) if (x.get("eps") is not None and pe_ and pe_ > 0) else None
+        prev_rev, prev_eps = x.get("rev"), x.get("eps")
     if not est:
         return ('<div class="muted">애널리스트 추정치가 없습니다 (분석하는 증권사가 없거나 자료 미공개)</div>'
                 + (f'<div class="ltg">향후 5년 EPS 연평균 성장 추정 <b>{pct(d.ltg, sign=True)}</b></div>' if d.ltg is not None else ""))
