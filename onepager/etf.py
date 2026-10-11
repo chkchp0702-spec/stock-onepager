@@ -167,6 +167,8 @@ def holdings_html(holdings, n_hold: Optional[int]) -> str:
     note = f'상위 10개가 전체의 <b>{top10:.1f}%</b>'
     if n_hold:
         note += f' · 총 {n_hold:,}개 종목'
+    if any(h.get("est") for h in hs):     # 운용사가 주식 수만 공개 → 주식 수 × 최근 가격 × 환율로 계산
+        note += '<br><span class="muted small">운용사는 주식 수만 공개해서, 비중은 <b>주식 수 × 최근 가격 × 환율</b>로 계산한 추정치예요.</span>'
     return f'<div class="hl-note">{note}</div><ul class="hls">{"".join(rows)}</ul><div class="muted small">종목을 누르면 그 회사 리포트로 이동해요</div>'
 
 
@@ -235,7 +237,11 @@ def summary3(x: dict) -> list[str]:
     if hs:
         names = ", ".join(h["name"] for h in hs[:3])
         top10 = sum(h["w"] for h in hs[:10] if h.get("w"))
-        out.append(f"가장 많이 담은 종목은 {names} — 상위 10개 비중 {top10:.0f}%.")
+        if top10 > 0:
+            est = " (추정)" if any(h.get("est") for h in hs[:10]) else ""
+            out.append(f"가장 많이 담은 종목은 {names} — 상위 10개 비중 {top10:.0f}%{est}.")
+        else:
+            out.append(f"주식 수가 많은 종목은 {names} (운용사가 비중은 공개 안 함).")
     r1 = (x.get("returns") or {}).get("1년")
     fee = x.get("fee")
     tail = []
